@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@theme {
+  --color-thames-bg: #054e40;
+  --color-thames-card: #054e40;
+  --color-thames-header: #84754e;
+  --color-thames-gold: #84754e;
+  --color-thames-text: #ffffff;
+  --color-thames-input: #000000;
+  --color-thames-hover: #84754e;
+}
+
+body {
+  background-color: var(--color-thames-bg);
+  color: var(--color-thames-text);
+}
