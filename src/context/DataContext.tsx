@@ -124,6 +124,7 @@ interface DataContextType {
   exportBookingsCSV: () => void;
   markNotificationRead: (id: string) => void;
   clearNotifications: () => void;
+  loading: boolean;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -132,53 +133,43 @@ const GYM_CAPACITY = 10;
 const POOL_CAPACITY = 10;
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('thames_prod_users');
-    const parsed = saved ? JSON.parse(saved) : [];
-    if (parsed.length === 0) {
-      return [{
-        id: 'admin-1',
-        username: 'admin',
-        password: 'password123',
-        pin: '1234',
-        fullName: 'System Administrator',
-        email: 'admin@thamescity.com',
-        phone: '0000000000',
-        department: 'Management',
-        jobTitle: 'Admin',
-        headOfDepartment: 'N/A',
-        role: 'Admin',
-        status: 'Active',
-        createdAt: new Date().toISOString(),
-        emailNotifications: true
-      }];
-    }
-    return parsed;
-  });
-  
-  const [bookings, setBookings] = useState<Booking[]>(() => {
-    const saved = localStorage.getItem('thames_prod_bookings');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [waitlist, setWaitlist] = useState<WaitlistEntry[]>(() => {
-    const saved = localStorage.getItem('thames_prod_waitlist');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [issues, setIssues] = useState<EquipmentIssue[]>(() => {
-    const saved = localStorage.getItem('thames_prod_issues');
-    return saved ? JSON.parse(saved) : [];
-  });
-
+  const [users, setUsers] = useState<User[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
+  const [issues, setIssues] = useState<EquipmentIssue[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [departments, setDepartments] = useState<string[]>([...DEFAULT_DEPARTMENTS]);
-  const [approvalConfigs, setApprovalConfigs] = useState<Record<string, ApprovalConfig>>(() => {
-    const saved = localStorage.getItem('thames_prod_approval_configs');
-    return saved ? JSON.parse(saved) : {};
-  });
+  const [approvalConfigs, setApprovalConfigs] = useState<Record<string, ApprovalConfig>>({});
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Initial data fetch
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [usersRes, bookingsRes, waitlistRes, issuesRes, configsRes] = await Promise.all([
+          fetch('/api/users').then(res => res.json()),
+          fetch('/api/bookings').then(res => res.json()),
+          fetch('/api/waitlist').then(res => res.json()),
+          fetch('/api/issues').then(res => res.json()),
+          fetch('/api/approval-configs').then(res => res.json())
+        ]);
+
+        setUsers(usersRes);
+        setBookings(bookingsRes);
+        setWaitlist(waitlistRes);
+        setIssues(issuesRes);
+        setApprovalConfigs(configsRes);
+      } catch (error) {
+        console.error('Failed to fetch initial data', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   // Socket initialization
   useEffect(() => {
@@ -203,13 +194,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       socket.emit('join-room', currentUser.id);
     }
   }, [currentUser, socket]);
-
-  // Persistence
-  useEffect(() => { localStorage.setItem('thames_prod_users', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('thames_prod_bookings', JSON.stringify(bookings)); }, [bookings]);
-  useEffect(() => { localStorage.setItem('thames_prod_waitlist', JSON.stringify(waitlist)); }, [waitlist]);
-  useEffect(() => { localStorage.setItem('thames_prod_issues', JSON.stringify(issues)); }, [issues]);
-  useEffect(() => { localStorage.setItem('thames_prod_approval_configs', JSON.stringify(approvalConfigs)); }, [approvalConfigs]);
 
   const notifyServer = useCallback(async (userId: string, message: string, type: 'info' | 'success' | 'warning' = 'info') => {
     try {
@@ -245,7 +229,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => setCurrentUser(null);
 
-  const register = (userData: Omit<User, 'id' | 'role' | 'status' | 'createdAt' | 'emailNotifications'>) => {
+  const register = async (userData: Omit<User, 'id' | 'role' | 'status' | 'createdAt' | 'emailNotifications'>) => {
     const newUser: User = {
       ...userData,
       id: Math.random().toString(36).substr(2, 9),
@@ -254,10 +238,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString(),
       emailNotifications: true,
     };
-    setUsers(prev => [...prev, newUser]);
+    
+    try {
+      const res = await fetch('/api/users/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUser)
+      });
+      if (res.ok) {
+        setUsers(prev => [...prev, newUser]);
+      }
+    } catch (e) {
+      console.error('Registration failed', e);
+    }
   };
 
-  const addBooking = (bookingData: Omit<Booking, 'id' | 'status' | 'createdAt' | 'userName' | 'userDepartment'>) => {
+  const addBooking = async (bookingData: Omit<Booking, 'id' | 'status' | 'createdAt' | 'userName' | 'userDepartment'>) => {
     if (!currentUser) return;
 
     const capacity = bookingData.facility === 'Gym' ? GYM_CAPACITY : POOL_CAPACITY;
@@ -288,97 +284,155 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString(),
       approvals: [],
     };
-    setBookings(prev => [...prev, newBooking]);
-    
-    // Notify managers
-    let managersToNotify: User[] = [];
-    const config = approvalConfigs[currentUser.department];
-    if (config && config.managerIds.length > 0) {
-      managersToNotify = users.filter(u => config.managerIds.includes(u.id));
-    } else {
-      managersToNotify = users.filter(u => (u.role === 'Manager' && u.department === currentUser.department) || u.role === 'Admin');
-    }
-    managersToNotify.forEach(m => notifyServer(m.id, `New booking request from ${currentUser.fullName}`, 'info'));
-  };
 
-  const approveBooking = (bookingId: string, managerId: string) => {
-    setBookings(prev => prev.map(b => {
-      if (b.id === bookingId) {
-        const currentApprovals = b.approvals || [];
-        if (currentApprovals.includes(managerId)) return b;
+    try {
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newBooking)
+      });
+      if (res.ok) {
+        setBookings(prev => [...prev, newBooking]);
         
-        const newApprovals = [...currentApprovals, managerId];
-        let newStatus: BookingStatus = 'Pending';
-        const config = approvalConfigs[b.userDepartment];
-
-        if (!config || config.logic === 'any' || config.managerIds.length === 0) {
-          newStatus = 'Approved';
-        } else if (config.logic === 'all') {
-          // Check if all designated managers have approved
-          const requiredManagers = config.managerIds;
-          const allApproved = requiredManagers.every(id => newApprovals.includes(id));
-          if (allApproved) newStatus = 'Approved';
+        // Notify managers
+        let managersToNotify: User[] = [];
+        const config = approvalConfigs[currentUser.department];
+        if (config && config.managerIds.length > 0) {
+          managersToNotify = users.filter(u => config.managerIds.includes(u.id));
+        } else {
+          managersToNotify = users.filter(u => (u.role === 'Manager' && u.department === currentUser.department) || u.role === 'Admin');
         }
-
-        if (newStatus === 'Approved') {
-          notifyServer(b.userId, `Your booking for ${b.facility} on ${b.date} has been approved!`, 'success');
-        }
-
-        return { ...b, approvals: newApprovals, status: newStatus };
+        managersToNotify.forEach(m => notifyServer(m.id, `New booking request from ${currentUser.fullName}`, 'info'));
       }
-      return b;
-    }));
-  };
-
-  const updateApprovalConfig = (department: string, config: ApprovalConfig) => {
-    setApprovalConfigs(prev => ({
-      ...prev,
-      [department]: config
-    }));
-  };
-
-  const updateBookingStatus = (bookingId: string, status: BookingStatus, reason?: string) => {
-    setBookings(prev => prev.map(b => {
-      if (b.id === bookingId) {
-        notifyServer(b.userId, `Your booking for ${b.facility} on ${b.date} has been ${status.toLowerCase()}`, status === 'Approved' ? 'success' : 'warning');
-        return { ...b, status, rejectionReason: reason };
-      }
-      return b;
-    }));
-
-    // If a booking is rejected or cancelled, check waitlist
-    if (status === 'Rejected' || status === 'Auto-cancelled') {
-      const booking = bookings.find(b => b.id === bookingId);
-      if (booking) {
-        const nextInLine = waitlist.find(w => 
-          w.facility === booking.facility && 
-          w.date === booking.date && 
-          w.timeSlot === booking.timeSlot
-        );
-        if (nextInLine) {
-          notifyServer(nextInLine.userId, `A spot has opened up for ${booking.facility} on ${booking.date}!`, 'success');
-          // Auto-promote or just notify? Let's just notify for now as per "Waitlist System" suggestion
-        }
-      }
+    } catch (e) {
+      console.error('Booking failed', e);
     }
   };
 
-  const updateUserStatus = (userId: string, status: AccountStatus) => {
-    setUsers(prev => prev.map(u => {
-      if (u.id === userId) {
-        notifyServer(u.id, `Your account status has been updated to ${status}`, status === 'Active' ? 'success' : 'warning');
-        return { ...u, status };
+  const approveBooking = async (bookingId: string, managerId: string) => {
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+
+    const currentApprovals = booking.approvals || [];
+    if (currentApprovals.includes(managerId)) return;
+    
+    const newApprovals = [...currentApprovals, managerId];
+    let newStatus: BookingStatus = 'Pending';
+    const config = approvalConfigs[booking.userDepartment];
+
+    if (!config || config.logic === 'any' || config.managerIds.length === 0) {
+      newStatus = 'Approved';
+    } else if (config.logic === 'all') {
+      const requiredManagers = config.managerIds;
+      const allApproved = requiredManagers.every(id => newApprovals.includes(id));
+      if (allApproved) newStatus = 'Approved';
+    }
+
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, approvals: newApprovals })
+      });
+      if (res.ok) {
+        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, approvals: newApprovals, status: newStatus } : b));
+        if (newStatus === 'Approved') {
+          notifyServer(booking.userId, `Your booking for ${booking.facility} on ${booking.date} has been approved!`, 'success');
+        }
       }
-      return u;
-    }));
+    } catch (e) {
+      console.error('Approval failed', e);
+    }
   };
 
-  const updateUserProfile = (userId: string, data: Partial<User>) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...data } : u));
-    if (currentUser?.id === userId) setCurrentUser(prev => prev ? { ...prev, ...data } : null);
+  const updateApprovalConfig = async (department: string, config: ApprovalConfig) => {
+    try {
+      const res = await fetch('/api/approval-configs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ department, config })
+      });
+      if (res.ok) {
+        setApprovalConfigs(prev => ({ ...prev, [department]: config }));
+      }
+    } catch (e) {
+      console.error('Failed to update approval config', e);
+    }
   };
 
-  const joinWaitlist = (data: Omit<WaitlistEntry, 'id' | 'userId' | 'userName' | 'createdAt'>) => {
+  const updateBookingStatus = async (bookingId: string, status: BookingStatus, reason?: string) => {
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, rejectionReason: reason })
+      });
+      if (res.ok) {
+        setBookings(prev => prev.map(b => {
+          if (b.id === bookingId) {
+            notifyServer(b.userId, `Your booking for ${b.facility} on ${b.date} has been ${status.toLowerCase()}`, status === 'Approved' ? 'success' : 'warning');
+            return { ...b, status, rejectionReason: reason };
+          }
+          return b;
+        }));
+
+        if (status === 'Rejected' || status === 'Auto-cancelled') {
+          const booking = bookings.find(b => b.id === bookingId);
+          if (booking) {
+            const nextInLine = waitlist.find(w => 
+              w.facility === booking.facility && 
+              w.date === booking.date && 
+              w.timeSlot === booking.timeSlot
+            );
+            if (nextInLine) {
+              notifyServer(nextInLine.userId, `A spot has opened up for ${booking.facility} on ${booking.date}!`, 'success');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to update booking status', e);
+    }
+  };
+
+  const updateUserStatus = async (userId: string, status: AccountStatus) => {
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        setUsers(prev => prev.map(u => {
+          if (u.id === userId) {
+            notifyServer(u.id, `Your account status has been updated to ${status}`, status === 'Active' ? 'success' : 'warning');
+            return { ...u, status };
+          }
+          return u;
+        }));
+      }
+    } catch (e) {
+      console.error('Failed to update user status', e);
+    }
+  };
+
+  const updateUserProfile = async (userId: string, data: Partial<User>) => {
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...data } : u));
+        if (currentUser?.id === userId) setCurrentUser(prev => prev ? { ...prev, ...data } : null);
+      }
+    } catch (e) {
+      console.error('Failed to update user profile', e);
+    }
+  };
+
+  const joinWaitlist = async (data: Omit<WaitlistEntry, 'id' | 'userId' | 'userName' | 'createdAt'>) => {
     if (!currentUser) return;
     const newEntry: WaitlistEntry = {
       ...data,
@@ -387,10 +441,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       userName: currentUser.fullName,
       createdAt: new Date().toISOString()
     };
-    setWaitlist(prev => [...prev, newEntry]);
+    try {
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEntry)
+      });
+      if (res.ok) {
+        setWaitlist(prev => [...prev, newEntry]);
+      }
+    } catch (e) {
+      console.error('Failed to join waitlist', e);
+    }
   };
 
-  const reportIssue = (facility: FacilityType, description: string) => {
+  const reportIssue = async (facility: FacilityType, description: string) => {
     if (!currentUser) return;
     const newIssue: EquipmentIssue = {
       id: Math.random().toString(36).substr(2, 9),
@@ -401,16 +466,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       status: 'Open',
       createdAt: new Date().toISOString()
     };
-    setIssues(prev => [...prev, newIssue]);
-    
-    // Notify admins
-    users.filter(u => u.role === 'Admin' || u.role === 'Owner').forEach(a => 
-      notifyServer(a.id, `New issue reported in ${facility} by ${currentUser.fullName}`, 'warning')
-    );
+    try {
+      const res = await fetch('/api/issues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newIssue, reportedBy: currentUser.id })
+      });
+      if (res.ok) {
+        setIssues(prev => [...prev, newIssue]);
+        users.filter(u => u.role === 'Admin' || u.role === 'Owner').forEach(a => 
+          notifyServer(a.id, `New issue reported in ${facility} by ${currentUser.fullName}`, 'warning')
+        );
+      }
+    } catch (e) {
+      console.error('Failed to report issue', e);
+    }
   };
 
-  const resolveIssue = (issueId: string) => {
-    setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: 'Resolved' } : i));
+  const resolveIssue = async (issueId: string) => {
+    try {
+      const res = await fetch(`/api/issues/${issueId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Resolved' })
+      });
+      if (res.ok) {
+        setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: 'Resolved' } : i));
+      }
+    } catch (e) {
+      console.error('Failed to resolve issue', e);
+    }
   };
 
   const exportBookingsCSV = () => {
@@ -505,6 +590,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (currentUser?.id === userId) setCurrentUser(prev => prev ? { ...prev, ...data, requiresSetup: false } : null);
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-thames-bg flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-thames-gold border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
     <DataContext.Provider value={{
       users, bookings, waitlist, issues, notifications, currentUser, departments,
@@ -513,7 +606,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       getPendingBookingsForManager, getAllPendingBookings, addDepartment, removeDepartment,
       createManagerAccount, completeManagerSetup, joinWaitlist, reportIssue, resolveIssue,
       exportBookingsCSV, markNotificationRead, clearNotifications,
-      approvalConfigs, updateApprovalConfig, approveBooking
+      approvalConfigs, updateApprovalConfig, approveBooking,
+      loading
     }}>
       {children}
     </DataContext.Provider>
