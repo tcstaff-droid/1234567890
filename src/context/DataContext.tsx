@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
 import Papa from 'papaparse';
 
 export type Role = 'Owner' | 'Admin' | 'Manager' | 'Staff';
@@ -141,7 +140,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [departments, setDepartments] = useState<string[]>([...DEFAULT_DEPARTMENTS]);
   const [approvalConfigs, setApprovalConfigs] = useState<Record<string, ApprovalConfig>>({});
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Initial data fetch
@@ -170,30 +168,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     fetchData();
   }, []);
-
-  // Socket initialization
-  useEffect(() => {
-    const newSocket = io();
-    setSocket(newSocket);
-
-    newSocket.on('notification', (notif: Omit<AppNotification, 'id' | 'read'>) => {
-      setNotifications(prev => [{
-        ...notif,
-        id: Math.random().toString(36).substr(2, 9),
-        read: false
-      }, ...prev]);
-    });
-
-    return () => {
-      newSocket.close();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (currentUser && socket) {
-      socket.emit('join-room', currentUser.id);
-    }
-  }, [currentUser, socket]);
 
   const notifyServer = useCallback(async (userId: string, message: string, type: 'info' | 'success' | 'warning' = 'info') => {
     try {

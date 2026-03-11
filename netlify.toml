@@ -1,0 +1,69 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Redirect all /api/* requests to Netlify Functions
+[[redirects]]
+  from = "/api/login"
+  to = "/.netlify/functions/login"
+  status = 200
+
+[[redirects]]
+  from = "/api/users/register"
+  to = "/.netlify/functions/users-register"
+  status = 200
+
+[[redirects]]
+  from = "/api/users/:id"
+  to = "/.netlify/functions/users-update?id=:id"
+  status = 200
+
+[[redirects]]
+  from = "/api/users"
+  to = "/.netlify/functions/users"
+  status = 200
+
+[[redirects]]
+  from = "/api/bookings/:id"
+  to = "/.netlify/functions/bookings-update?id=:id"
+  status = 200
+
+[[redirects]]
+  from = "/api/bookings"
+  to = "/.netlify/functions/bookings"
+  status = 200
+
+[[redirects]]
+  from = "/api/waitlist"
+  to = "/.netlify/functions/waitlist"
+  status = 200
+
+[[redirects]]
+  from = "/api/issues/:id"
+  to = "/.netlify/functions/issues-update?id=:id"
+  status = 200
+
+[[redirects]]
+  from = "/api/issues"
+  to = "/.netlify/functions/issues"
+  status = 200
+
+[[redirects]]
+  from = "/api/approval-configs"
+  to = "/.netlify/functions/approval-configs"
+  status = 200
+
+[[redirects]]
+  from = "/api/notify"
+  to = "/.netlify/functions/notify"
+  status = 200
+
+# SPA fallback - must be last
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
