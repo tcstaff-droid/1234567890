@@ -11,7 +11,7 @@ export default function Login() {
   const { loginWithPassword } = useData();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -20,7 +20,7 @@ export default function Login() {
       return;
     }
 
-    const result = loginWithPassword(username, password);
+    const result = await loginWithPassword(username, password);
     if (result.success) {
       navigate('/');
     } else {
@@ -32,8 +32,8 @@ export default function Login() {
     <div className="min-h-screen bg-thames-bg flex items-center justify-center p-4 font-sans">
       <div className="bg-thames-card w-full max-w-[400px] rounded-lg shadow-md overflow-hidden border-2 border-thames-gold">
         <div className="pt-8 pb-6 px-8 flex flex-col items-center text-center">
-          <div className="w-12 h-12 bg-thames-bg rounded-full flex items-center justify-center mb-4 border-2 border-thames-gold">
-            <Building className="w-6 h-6 text-thames-gold" />
+          <div className="w-24 h-24 flex items-center justify-center mb-4">
+            <img src="/logo.svg" alt="Thames City Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
           </div>
           <h1 className="text-2xl font-bold text-thames-gold">Thames City</h1>
           <p className="text-white/50 mt-1">Staff Booking Portal</p>

@@ -102,8 +102,8 @@ interface DataContextType {
   approvalConfigs: Record<string, ApprovalConfig>;
   updateApprovalConfig: (department: string, config: ApprovalConfig) => void;
   approveBooking: (bookingId: string, managerId: string) => void;
-  login: (username: string, pin: string) => { success: boolean; message?: string };
-  loginWithPassword: (username: string, password: string) => { success: boolean; message?: string };
+  login: (username: string, pin: string) => Promise<{ success: boolean; message?: string }>;
+  loginWithPassword: (username: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   register: (userData: Omit<User, 'id' | 'role' | 'status' | 'createdAt' | 'emailNotifications'>) => void;
   addBooking: (booking: Omit<Booking, 'id' | 'status' | 'createdAt' | 'userName' | 'userDepartment'>) => void;
@@ -207,24 +207,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const loginWithPassword = (username: string, password: string) => {
-    const user = users.find(u => u.username === username && u.password === password);
-    if (!user) return { success: false, message: 'Invalid username or password' };
-    if (user.status === 'Pending') return { success: false, message: 'Account pending approval' };
-    if (user.status === 'Rejected') return { success: false, message: 'Account has been rejected' };
-    
-    setCurrentUser(user);
-    return { success: true };
+  const loginWithPassword = async (username: string, password: string) => {
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCurrentUser(data.user);
+        return { success: true };
+      }
+      return { success: false, message: data.message || 'Login failed' };
+    } catch (e) {
+      return { success: false, message: 'Network error' };
+    }
   };
 
-  const login = (username: string, pin: string) => {
-    const user = users.find(u => u.username === username && u.pin === pin);
-    if (!user) return { success: false, message: 'Invalid username or PIN' };
-    if (user.status === 'Pending') return { success: false, message: 'Account pending approval' };
-    if (user.status === 'Rejected') return { success: false, message: 'Account has been rejected' };
-    
-    setCurrentUser(user);
-    return { success: true };
+  const login = async (username: string, pin: string) => {
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, pin })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCurrentUser(data.user);
+        return { success: true };
+      }
+      return { success: false, message: data.message || 'Login failed' };
+    } catch (e) {
+      return { success: false, message: 'Network error' };
+    }
   };
 
   const logout = () => setCurrentUser(null);

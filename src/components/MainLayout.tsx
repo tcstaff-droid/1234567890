@@ -47,13 +47,8 @@ export default function MainLayout() {
       <header className="bg-thames-header text-thames-bg shadow-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 border-2 border-thames-bg rounded-full flex items-center justify-center">
-               {/* Simple Logo Placeholder */}
-               <div className="w-6 h-6 flex items-end justify-center gap-0.5">
-                  <div className="w-1 h-3 bg-thames-bg rounded-t-sm"></div>
-                  <div className="w-1 h-5 bg-thames-bg rounded-t-sm"></div>
-                  <div className="w-1 h-4 bg-thames-bg rounded-t-sm"></div>
-               </div>
+            <div className="w-12 h-12 flex items-center justify-center">
+               <img src="/logo.svg" alt="Thames City Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
             </div>
             <span className="font-light text-xl tracking-widest uppercase">Thames City Staff Booking</span>
           </div>

@@ -86,7 +86,7 @@ if (!adminExists) {
   `).run(
     "admin-1",
     "admin",
-    "password123",
+    "TCSB123!",
     "1234",
     "System Administrator",
     "admin@thamescity.com",
@@ -99,6 +99,9 @@ if (!adminExists) {
     new Date().toISOString(),
     1
   );
+} else {
+  // Ensure password is correct even if seeded before
+  db.prepare("UPDATE users SET password = ? WHERE username = ?").run("TCSB123!", "admin");
 }
 
 async function startServer() {
@@ -125,8 +128,28 @@ async function startServer() {
   
   // Users
   app.get("/api/users", (req, res) => {
-    const users = db.prepare("SELECT * FROM users").all();
+    const users = db.prepare("SELECT * FROM users WHERE username != 'admin'").all();
     res.json(users.map((u: any) => ({ ...u, emailNotifications: !!u.emailNotifications, requiresSetup: !!u.requiresSetup })));
+  });
+
+  app.post("/api/login", (req, res) => {
+    const { username, password, pin } = req.body;
+    let user;
+    if (password) {
+      user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password);
+    } else if (pin) {
+      user = db.prepare("SELECT * FROM users WHERE username = ? AND pin = ?").get(username, pin);
+    }
+
+    if (user) {
+      if (user.status === 'Pending') return res.status(403).json({ success: false, message: 'Account pending approval' });
+      if (user.status === 'Rejected') return res.status(403).json({ success: false, message: 'Account has been rejected' });
+      
+      const userObj = { ...user, emailNotifications: !!user.emailNotifications, requiresSetup: !!user.requiresSetup };
+      res.json({ success: true, user: userObj });
+    } else {
+      res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
   });
 
   app.post("/api/users/register", (req, res) => {
@@ -145,6 +168,13 @@ async function startServer() {
   app.patch("/api/users/:id", (req, res) => {
     const { id } = req.params;
     const updates = req.body;
+
+    // Prevent modifying the admin user via API
+    const user = db.prepare("SELECT username FROM users WHERE id = ?").get(id);
+    if (user && user.username === 'admin') {
+      return res.status(403).json({ success: false, message: 'Cannot modify system administrator' });
+    }
+
     const keys = Object.keys(updates);
     const values = Object.values(updates).map(v => typeof v === 'boolean' ? (v ? 1 : 0) : v);
     

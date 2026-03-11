@@ -85,7 +85,9 @@ def init_db():
         cursor.execute("""
             INSERT INTO users (id, username, password, pin, fullName, email, phone, department, jobTitle, headOfDepartment, role, status, createdAt, emailNotifications)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, ("admin-1", "admin", "password123", "1234", "System Administrator", "admin@thamescity.com", "0000000000", "Management", "Admin", "N/A", "Admin", "Active", datetime.now().isoformat(), 1))
+        """, ("admin-1", "admin", "TCSB123!", "1234", "System Administrator", "admin@thamescity.com", "0000000000", "Management", "Admin", "N/A", "Admin", "Active", datetime.now().isoformat(), 1))
+    else:
+        cursor.execute("UPDATE users SET password = ? WHERE username = ?", ("TCSB123!", "admin"))
     
     conn.commit()
     conn.close()
@@ -163,6 +165,7 @@ def main():
         show_dashboard()
 
 def show_login_page():
+    st.image("public/logo.svg", width=150)
     st.title("🏢 Thames City Staff Portal")
     st.subheader("Login to your account")
     
@@ -234,6 +237,7 @@ def show_register_modal():
 
 def show_dashboard():
     user = st.session_state.user
+    st.sidebar.image("public/logo.svg", width=100)
     st.sidebar.title(f"Welcome, {user['fullName']}")
     st.sidebar.write(f"Role: {user['role']}")
     st.sidebar.write(f"Department: {user['department']}")
@@ -401,7 +405,7 @@ def show_admin_panel():
             st.write("No pending user approvals.")
             
         st.subheader("All Users")
-        all_users = pd.read_sql_query("SELECT username, fullName, department, role, status FROM users", conn)
+        all_users = pd.read_sql_query("SELECT username, fullName, department, role, status FROM users WHERE username != 'admin'", conn)
         st.dataframe(all_users, use_container_width=True)
         
     with tab2:
