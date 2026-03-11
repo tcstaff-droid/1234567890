@@ -1,3 +1,6 @@
 streamlit
 pandas
-sqlite3
+sed -i '/^sqlite3$/d' requirements.txt
+git add requirements.txt
+git commit -m "Remove sqlite3 from requirements.txt (stdlib module)"
+git push
