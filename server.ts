@@ -4,107 +4,136 @@ import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import Database from "better-sqlite3";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Database
-const db = new Database("thames_city.db");
-db.pragma("journal_mode = WAL");
-
-// Create Tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE,
-    password TEXT,
-    pin TEXT,
-    fullName TEXT,
-    email TEXT,
-    phone TEXT,
-    department TEXT,
-    jobTitle TEXT,
-    headOfDepartment TEXT,
-    role TEXT,
-    status TEXT,
-    createdAt TEXT,
-    emailNotifications INTEGER,
-    requiresSetup INTEGER DEFAULT 0
-  );
-
-  CREATE TABLE IF NOT EXISTS bookings (
-    id TEXT PRIMARY KEY,
-    userId TEXT,
-    userName TEXT,
-    userDepartment TEXT,
-    facility TEXT,
-    date TEXT,
-    timeSlot TEXT,
-    status TEXT,
-    createdAt TEXT,
-    termsAcceptedAt TEXT,
-    rejectionReason TEXT,
-    approvals TEXT,
-    FOREIGN KEY(userId) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS waitlist (
-    id TEXT PRIMARY KEY,
-    userId TEXT,
-    userName TEXT,
-    facility TEXT,
-    date TEXT,
-    timeSlot TEXT,
-    createdAt TEXT,
-    FOREIGN KEY(userId) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS issues (
-    id TEXT PRIMARY KEY,
-    facility TEXT,
-    description TEXT,
-    status TEXT,
-    createdAt TEXT,
-    reportedBy TEXT,
-    FOREIGN KEY(reportedBy) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS approval_configs (
-    department TEXT PRIMARY KEY,
-    managerIds TEXT,
-    logic TEXT
-  );
-`);
-
-// Seed Admin if not exists
-const adminExists = db.prepare("SELECT id FROM users WHERE username = ?").get("admin");
-if (!adminExists) {
-  db.prepare(`
-    INSERT INTO users (id, username, password, pin, fullName, email, phone, department, jobTitle, headOfDepartment, role, status, createdAt, emailNotifications)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    "admin-1",
-    "admin",
-    "TCSB123!",
-    "1234",
-    "System Administrator",
-    "admin@thamescity.com",
-    "0000000000",
-    "Management",
-    "Admin",
-    "N/A",
-    "Admin",
-    "Active",
-    new Date().toISOString(),
-    1
-  );
-} else {
-  // Ensure password is correct even if seeded before
-  db.prepare("UPDATE users SET password = ? WHERE username = ?").run("TCSB123!", "admin");
-}
-
 async function startServer() {
+  // Initialize Database
+  const db = await open({
+    filename: "thames_city.db",
+    driver: sqlite3.Database,
+  });
+
+  // Create Tables
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE,
+      password TEXT,
+      pin TEXT,
+      fullName TEXT,
+      email TEXT,
+      phone TEXT,
+      department TEXT,
+      jobTitle TEXT,
+      headOfDepartment TEXT,
+      role TEXT,
+      status TEXT,
+      createdAt TEXT,
+      emailNotifications INTEGER,
+      requiresSetup INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS bookings (
+      id TEXT PRIMARY KEY,
+      userId TEXT,
+      userName TEXT,
+      userDepartment TEXT,
+      facility TEXT,
+      date TEXT,
+      timeSlot TEXT,
+      status TEXT,
+      createdAt TEXT,
+      termsAcceptedAt TEXT,
+      rejectionReason TEXT,
+      approvals TEXT,
+      FOREIGN KEY(userId) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS waitlist (
+      id TEXT PRIMARY KEY,
+      userId TEXT,
+      userName TEXT,
+      facility TEXT,
+      date TEXT,
+      timeSlot TEXT,
+      createdAt TEXT,
+      FOREIGN KEY(userId) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS issues (
+      id TEXT PRIMARY KEY,
+      facility TEXT,
+      description TEXT,
+      status TEXT,
+      createdAt TEXT,
+      reportedBy TEXT,
+      FOREIGN KEY(reportedBy) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS approval_configs (
+      department TEXT PRIMARY KEY,
+      managerIds TEXT,
+      logic TEXT
+    );
+  `);
+
+  // Seed Admin if not exists
+  const adminExists = await db.get("SELECT id FROM users WHERE username = ?", "admin");
+  if (!adminExists) {
+    await db.run(`
+      INSERT INTO users (id, username, password, pin, fullName, email, phone, department, jobTitle, headOfDepartment, role, status, createdAt, emailNotifications)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      "admin-1",
+      "admin",
+      "TCSB123!",
+      "1234",
+      "System Administrator",
+      "admin@thamescity.com",
+      "0000000000",
+      "Management",
+      "Admin",
+      "N/A",
+      "Admin",
+      "Active",
+      new Date().toISOString(),
+      1
+    );
+  } else {
+    // Ensure password is correct even if seeded before
+    await db.run("UPDATE users SET password = ? WHERE username = ?", "TCSB123!", "admin");
+  }
+
+  // Seed 1974 Club Sample Staff
+  const clubStaffExists = await db.get("SELECT id FROM users WHERE username = ?", "club1974");
+  if (!clubStaffExists) {
+    await db.run(`
+      INSERT INTO users (id, username, password, pin, fullName, email, phone, department, jobTitle, headOfDepartment, role, status, createdAt, emailNotifications)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      "staff-1974",
+      "club1974",
+      "password123",
+      "1974",
+      "1974 Club Staff",
+      "club@thamescity.com",
+      "07700001974",
+      "1974 Club",
+      "Club Attendant",
+      "Club Manager",
+      "Staff",
+      "Active",
+      new Date().toISOString(),
+      1
+    );
+  } else {
+    await db.run("UPDATE users SET role = ? WHERE username = ?", "Staff", "club1974");
+  }
+
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
@@ -113,7 +142,7 @@ async function startServer() {
     },
   });
 
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Socket.io logic
   io.on("connection", (socket) => {
@@ -127,18 +156,18 @@ async function startServer() {
   // API Routes
   
   // Users
-  app.get("/api/users", (req, res) => {
-    const users = db.prepare("SELECT * FROM users WHERE username != 'admin'").all();
+  app.get("/api/users", async (req, res) => {
+    const users = await db.all("SELECT * FROM users WHERE username != 'admin'");
     res.json(users.map((u: any) => ({ ...u, emailNotifications: !!u.emailNotifications, requiresSetup: !!u.requiresSetup })));
   });
 
-  app.post("/api/login", (req, res) => {
+  app.post("/api/login", async (req, res) => {
     const { username, password, pin } = req.body;
     let user;
     if (password) {
-      user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password);
+      user = await db.get("SELECT * FROM users WHERE username = ? AND password = ?", username, password);
     } else if (pin) {
-      user = db.prepare("SELECT * FROM users WHERE username = ? AND pin = ?").get(username, pin);
+      user = await db.get("SELECT * FROM users WHERE username = ? AND pin = ?", username, pin);
     }
 
     if (user) {
@@ -152,25 +181,25 @@ async function startServer() {
     }
   });
 
-  app.post("/api/users/register", (req, res) => {
+  app.post("/api/users/register", async (req, res) => {
     const { id, username, password, pin, fullName, email, phone, department, jobTitle, headOfDepartment, role, status, createdAt, emailNotifications } = req.body;
     try {
-      db.prepare(`
+      await db.run(`
         INSERT INTO users (id, username, password, pin, fullName, email, phone, department, jobTitle, headOfDepartment, role, status, createdAt, emailNotifications)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, username, password, pin, fullName, email, phone, department, jobTitle, headOfDepartment, role, status, createdAt, emailNotifications ? 1 : 0);
+      `, id, username, password, pin, fullName, email, phone, department, jobTitle, headOfDepartment, role, status, createdAt, emailNotifications ? 1 : 0);
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message });
     }
   });
 
-  app.patch("/api/users/:id", (req, res) => {
+  app.patch("/api/users/:id", async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
     // Prevent modifying the admin user via API
-    const user = db.prepare("SELECT username FROM users WHERE id = ?").get(id);
+    const user = await db.get("SELECT username FROM users WHERE id = ?", id);
     if (user && user.username === 'admin') {
       return res.status(403).json({ success: false, message: 'Cannot modify system administrator' });
     }
@@ -179,26 +208,26 @@ async function startServer() {
     const values = Object.values(updates).map(v => typeof v === 'boolean' ? (v ? 1 : 0) : v);
     
     const setClause = keys.map(k => `${k} = ?`).join(", ");
-    db.prepare(`UPDATE users SET ${setClause} WHERE id = ?`).run(...values, id);
+    await db.run(`UPDATE users SET ${setClause} WHERE id = ?`, ...values, id);
     res.json({ success: true });
   });
 
   // Bookings
-  app.get("/api/bookings", (req, res) => {
-    const bookings = db.prepare("SELECT * FROM bookings").all();
+  app.get("/api/bookings", async (req, res) => {
+    const bookings = await db.all("SELECT * FROM bookings");
     res.json(bookings.map((b: any) => ({ ...b, approvals: b.approvals ? JSON.parse(b.approvals) : [] })));
   });
 
-  app.post("/api/bookings", (req, res) => {
+  app.post("/api/bookings", async (req, res) => {
     const booking = req.body;
-    db.prepare(`
+    await db.run(`
       INSERT INTO bookings (id, userId, userName, userDepartment, facility, date, timeSlot, status, createdAt, termsAcceptedAt, approvals)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(booking.id, booking.userId, booking.userName, booking.userDepartment, booking.facility, booking.date, booking.timeSlot, booking.status, booking.createdAt, booking.termsAcceptedAt, JSON.stringify(booking.approvals || []));
+    `, booking.id, booking.userId, booking.userName, booking.userDepartment, booking.facility, booking.date, booking.timeSlot, booking.status, booking.createdAt, booking.termsAcceptedAt, JSON.stringify(booking.approvals || []));
     res.json({ success: true });
   });
 
-  app.patch("/api/bookings/:id", (req, res) => {
+  app.patch("/api/bookings/:id", async (req, res) => {
     const { id } = req.params;
     const { status, rejectionReason, approvals } = req.body;
     
@@ -217,50 +246,50 @@ async function startServer() {
     query += " WHERE id = ?";
     params.push(id);
 
-    db.prepare(query).run(...params);
+    await db.run(query, ...params);
     res.json({ success: true });
   });
 
   // Waitlist
-  app.get("/api/waitlist", (req, res) => {
-    const waitlist = db.prepare("SELECT * FROM waitlist").all();
+  app.get("/api/waitlist", async (req, res) => {
+    const waitlist = await db.all("SELECT * FROM waitlist");
     res.json(waitlist);
   });
 
-  app.post("/api/waitlist", (req, res) => {
+  app.post("/api/waitlist", async (req, res) => {
     const entry = req.body;
-    db.prepare(`
+    await db.run(`
       INSERT INTO waitlist (id, userId, userName, facility, date, timeSlot, createdAt)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(entry.id, entry.userId, entry.userName, entry.facility, entry.date, entry.timeSlot, entry.createdAt);
+    `, entry.id, entry.userId, entry.userName, entry.facility, entry.date, entry.timeSlot, entry.createdAt);
     res.json({ success: true });
   });
 
   // Issues
-  app.get("/api/issues", (req, res) => {
-    const issues = db.prepare("SELECT * FROM issues").all();
+  app.get("/api/issues", async (req, res) => {
+    const issues = await db.all("SELECT * FROM issues");
     res.json(issues);
   });
 
-  app.post("/api/issues", (req, res) => {
+  app.post("/api/issues", async (req, res) => {
     const issue = req.body;
-    db.prepare(`
+    await db.run(`
       INSERT INTO issues (id, facility, description, status, createdAt, reportedBy)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(issue.id, issue.facility, issue.description, issue.status, issue.createdAt, issue.reportedBy);
+    `, issue.id, issue.facility, issue.description, issue.status, issue.createdAt, issue.reportedBy);
     res.json({ success: true });
   });
 
-  app.patch("/api/issues/:id", (req, res) => {
+  app.patch("/api/issues/:id", async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
-    db.prepare("UPDATE issues SET status = ? WHERE id = ?").run(status, id);
+    await db.run("UPDATE issues SET status = ? WHERE id = ?", status, id);
     res.json({ success: true });
   });
 
   // Approval Configs
-  app.get("/api/approval-configs", (req, res) => {
-    const configs = db.prepare("SELECT * FROM approval_configs").all();
+  app.get("/api/approval-configs", async (req, res) => {
+    const configs = await db.all("SELECT * FROM approval_configs");
     const result: Record<string, any> = {};
     configs.forEach((c: any) => {
       result[c.department] = {
@@ -271,15 +300,16 @@ async function startServer() {
     res.json(result);
   });
 
-  app.post("/api/approval-configs", (req, res) => {
+  app.post("/api/approval-configs", async (req, res) => {
     const { department, config } = req.body;
-    db.prepare(`
+    // SQLite doesn't have ON CONFLICT DO UPDATE for INSERT in all versions, 
+    // but sqlite3/sqlite wrapper supports it if the underlying sqlite version is 3.24.0+
+    // For safety, let's use a DELETE then INSERT or a more portable approach.
+    await db.run("DELETE FROM approval_configs WHERE department = ?", department);
+    await db.run(`
       INSERT INTO approval_configs (department, managerIds, logic)
       VALUES (?, ?, ?)
-      ON CONFLICT(department) DO UPDATE SET
-        managerIds = excluded.managerIds,
-        logic = excluded.logic
-    `).run(department, JSON.stringify(config.managerIds), config.logic);
+    `, department, JSON.stringify(config.managerIds), config.logic);
     res.json({ success: true });
   });
 

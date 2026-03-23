@@ -39,15 +39,12 @@ export default function BookingWizard() {
   const [error, setError] = useState('');
   const [termsScrolled, setTermsScrolled] = useState(false);
 
-  const [isRecurring, setIsRecurring] = useState(false);
-
   // Step 1: Facility
   const selectFacility = (f: 'Gym' | 'Pool') => {
     setFacility(f);
     setStep(2);
     setDate('');
     setTimeSlot('');
-    setIsRecurring(false);
     setError('');
   };
 
@@ -127,8 +124,7 @@ export default function BookingWizard() {
       facility: facility!,
       date,
       timeSlot: dataSlot,
-      termsAcceptedAt: new Date().toISOString(),
-      isRecurring
+      termsAcceptedAt: new Date().toISOString()
     });
     
     // Show success step instead of navigating
@@ -143,7 +139,6 @@ export default function BookingWizard() {
     setPin('');
     setError('');
     setTermsScrolled(false);
-    setIsRecurring(false);
   };
 
   return (
@@ -226,24 +221,11 @@ export default function BookingWizard() {
         {step === 4 && (
           <div className="space-y-6">
             <div className="bg-thames-bg p-5 rounded-xl border-2 border-thames-gold">
-              <h3 className="text-xs font-bold text-thames-gold mb-3 uppercase tracking-widest">Booking Summary</h3>
-              <div className="text-sm text-white/70 space-y-2">
-                <p className="flex justify-between"><span className="font-bold text-white/40 uppercase text-[10px]">Facility</span> <span className="font-bold uppercase">{facility}</span></p>
-                <p className="flex justify-between"><span className="font-bold text-white/40 uppercase text-[10px]">Date</span> <span className="font-bold uppercase">{new Date(date).toLocaleDateString('en-GB', { dateStyle: 'full' })}</span></p>
-                <p className="flex justify-between"><span className="font-bold text-white/40 uppercase text-[10px]">Time</span> <span className="font-bold uppercase">{timeSlot}</span></p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-4 bg-white/5 rounded-xl border-2 border-white/10 hover:border-thames-gold transition-all cursor-pointer" onClick={() => setIsRecurring(!isRecurring)}>
-              <div className={cn(
-                "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
-                isRecurring ? "bg-thames-gold border-thames-gold" : "border-white/20"
-              )}>
-                {isRecurring && <CheckCircle size={12} className="text-thames-bg" />}
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white uppercase tracking-wider">Make Recurring</p>
-                <p className="text-[10px] text-white/40 uppercase font-bold">Repeat this booking every week</p>
+              <h3 className="text-[10px] font-bold text-thames-gold mb-3 uppercase tracking-widest">Booking Summary</h3>
+              <div className="text-[11px] text-white/70 space-y-2">
+                <p className="flex justify-between"><span className="font-bold text-white/40 uppercase text-[9px]">Facility</span> <span className="font-bold uppercase">{facility}</span></p>
+                <p className="flex justify-between"><span className="font-bold text-white/40 uppercase text-[9px]">Date</span> <span className="font-bold uppercase">{new Date(date).toLocaleDateString('en-GB', { dateStyle: 'full' })}</span></p>
+                <p className="flex justify-between"><span className="font-bold text-white/40 uppercase text-[9px]">Time</span> <span className="font-bold uppercase">{timeSlot}</span></p>
               </div>
             </div>
 

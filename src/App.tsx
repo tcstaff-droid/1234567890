@@ -8,6 +8,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import CapacityView from './pages/CapacityView';
 import Analytics from './pages/Analytics';
+import MyBookingsPage from './pages/MyBookingsPage';
 import MainLayout from './components/MainLayout';
 
 export default function App() {
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/" element={<MainLayout />}>
             <Route index element={<Home />} />
+            <Route path="my-bookings" element={<MyBookingsPage />} />
             <Route path="approvals" element={<Approvals />} />
             <Route path="admin" element={<AdminDashboard />} />
             <Route path="capacity" element={<CapacityView />} />

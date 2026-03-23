@@ -8,9 +8,12 @@ export default function MyBookings() {
   
   if (!currentUser) return null;
 
-  const bookings = getBookingsForUser(currentUser.id).sort((a, b) => 
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const bookings = getBookingsForUser(currentUser.id).sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    if (dateA !== dateB) return dateB - dateA;
+    return b.timeSlot.localeCompare(a.timeSlot);
+  });
 
   const formatDate = (dateStr: string) => {
     try {
@@ -54,7 +57,7 @@ export default function MyBookings() {
   };
 
   return (
-    <div className="bg-thames-card rounded-xl border-2 border-thames-gold overflow-hidden flex flex-col h-[600px]">
+    <div className="bg-thames-card rounded-xl border-2 border-thames-gold overflow-hidden flex flex-col">
       <div className="px-6 py-4 border-b-2 border-thames-gold flex-shrink-0 bg-thames-card z-10">
         <h2 className="font-medium text-thames-gold flex items-center gap-2 uppercase tracking-widest text-sm">
           <Calendar size={18} />

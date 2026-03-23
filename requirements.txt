@@ -1,3 +1,6 @@
-streamlit
+fastapi
+uvicorn[standard]
+python-socketio
+pydantic
+python-multipart
 pandas
-sed -i '/^sqlite3$/d' requirements.txt

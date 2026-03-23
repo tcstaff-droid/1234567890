@@ -20,40 +20,43 @@ export default function Home() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-light text-white">Welcome, {currentUser.fullName.split(' ')[0]}</h1>
-        <p className="text-thames-header mt-1">{currentUser.role} Dashboard</p>
+        {currentUser.role !== 'Staff' && (
+          <p className="text-thames-header mt-1">{currentUser.role} Dashboard</p>
+        )}
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <SummaryCard 
-          icon={<Clock className="text-thames-header" />} 
-          value={pendingCount} 
-          label="Pending Requests" 
-        />
-        <SummaryCard 
-          icon={<CheckCircle2 className="text-thames-gold" />} 
-          value={approvedToday} 
-          label="Approved Today" 
-        />
-        <SummaryCard 
-          icon={<Dumbbell className="text-thames-header" />} 
-          value={gymRequests} 
-          label="Gym Requests" 
-        />
-        <SummaryCard 
-          icon={<Waves className="text-thames-gold" />} 
-          value={poolRequests} 
-          label="Pool Requests" 
-        />
-      </div>
+      {/* Summary Cards - Only for Managers/Admins/Owners */}
+      {(currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'Owner') && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <SummaryCard 
+            icon={<Clock className="text-thames-header" />} 
+            value={pendingCount} 
+            label="Pending Requests" 
+          />
+          <SummaryCard 
+            icon={<CheckCircle2 className="text-thames-gold" />} 
+            value={approvedToday} 
+            label="Approved Today" 
+          />
+          <SummaryCard 
+            icon={<Dumbbell className="text-thames-header" />} 
+            value={gymRequests} 
+            label="Gym Requests" 
+          />
+          <SummaryCard 
+            icon={<Waves className="text-thames-gold" />} 
+            value={poolRequests} 
+            label="Pool Requests" 
+          />
+        </div>
+      )}
 
       {/* Content Area */}
       <div className="bg-thames-card rounded-xl border-2 border-thames-gold p-6 min-h-[400px]">
         
         {currentUser.role === 'Staff' && (
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+           <div className="max-w-2xl mx-auto">
               <BookingWizard />
-              <MyBookings />
            </div>
         )}
 

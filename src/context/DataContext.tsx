@@ -129,6 +129,9 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || API_URL || window.location.origin;
+
 const GYM_CAPACITY = 10;
 const POOL_CAPACITY = 10;
 
@@ -144,23 +147,45 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const apiFetch = async (url: string, options: RequestInit = {}) => {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    
+    if (text.includes('Cookie check') || text.includes('Authenticate in new window')) {
+      throw new Error('Security check required. Please click "Authenticate in new window" in the preview or open the app in a new tab.');
+    }
+
+    if (!res.ok) {
+      let errorMessage = `HTTP error! status: ${res.status}`;
+      try {
+        const data = text ? JSON.parse(text) : {};
+        errorMessage = data.message || data.detail || errorMessage;
+      } catch (e) {
+        // Not JSON, use default error
+      }
+      throw new Error(errorMessage);
+    }
+
+    return text ? JSON.parse(text) : null;
+  };
+
   // Initial data fetch
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [usersRes, bookingsRes, waitlistRes, issuesRes, configsRes] = await Promise.all([
-          fetch('/api/users').then(res => res.json()),
-          fetch('/api/bookings').then(res => res.json()),
-          fetch('/api/waitlist').then(res => res.json()),
-          fetch('/api/issues').then(res => res.json()),
-          fetch('/api/approval-configs').then(res => res.json())
+          apiFetch(`${API_URL}/api/users`),
+          apiFetch(`${API_URL}/api/bookings`),
+          apiFetch(`${API_URL}/api/waitlist`),
+          apiFetch(`${API_URL}/api/issues`),
+          apiFetch(`${API_URL}/api/approval-configs`)
         ]);
 
-        setUsers(usersRes);
-        setBookings(bookingsRes);
-        setWaitlist(waitlistRes);
-        setIssues(issuesRes);
-        setApprovalConfigs(configsRes);
+        setUsers(usersRes || []);
+        setBookings(bookingsRes || []);
+        setWaitlist(waitlistRes || []);
+        setIssues(issuesRes || []);
+        setApprovalConfigs(configsRes || {});
       } catch (error) {
         console.error('Failed to fetch initial data', error);
       } finally {
@@ -173,7 +198,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   // Socket initialization
   useEffect(() => {
-    const newSocket = io();
+    const newSocket = io(SOCKET_URL);
     setSocket(newSocket);
 
     newSocket.on('notification', (notif: Omit<AppNotification, 'id' | 'read'>) => {
@@ -197,7 +222,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const notifyServer = useCallback(async (userId: string, message: string, type: 'info' | 'success' | 'warning' = 'info') => {
     try {
-      await fetch('/api/notify', {
+      await apiFetch(`${API_URL}/api/notify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, message, type })
@@ -209,37 +234,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithPassword = async (username: string, password: string) => {
     try {
-      const res = await fetch('/api/login', {
+      const data = await apiFetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      const data = await res.json();
+      
       if (data.success) {
         setCurrentUser(data.user);
         return { success: true };
       }
       return { success: false, message: data.message || 'Login failed' };
-    } catch (e) {
-      return { success: false, message: 'Network error' };
+    } catch (e: any) {
+      console.error('Login error:', e);
+      return { success: false, message: e.message || 'Network error' };
     }
   };
 
   const login = async (username: string, pin: string) => {
     try {
-      const res = await fetch('/api/login', {
+      const data = await apiFetch(`${API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, pin })
       });
-      const data = await res.json();
+      
       if (data.success) {
         setCurrentUser(data.user);
         return { success: true };
       }
       return { success: false, message: data.message || 'Login failed' };
-    } catch (e) {
-      return { success: false, message: 'Network error' };
+    } catch (e: any) {
+      console.error('PIN Login error:', e);
+      return { success: false, message: e.message || 'Network error' };
     }
   };
 
@@ -256,14 +283,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
     
     try {
-      const res = await fetch('/api/users/register', {
+      await apiFetch(`${API_URL}/api/users/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newUser)
       });
-      if (res.ok) {
-        setUsers(prev => [...prev, newUser]);
-      }
+      setUsers(prev => [...prev, newUser]);
     } catch (e) {
       console.error('Registration failed', e);
     }
@@ -302,24 +327,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
 
     try {
-      const res = await fetch('/api/bookings', {
+      await apiFetch(`${API_URL}/api/bookings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBooking)
       });
-      if (res.ok) {
-        setBookings(prev => [...prev, newBooking]);
-        
-        // Notify managers
-        let managersToNotify: User[] = [];
-        const config = approvalConfigs[currentUser.department];
-        if (config && config.managerIds.length > 0) {
-          managersToNotify = users.filter(u => config.managerIds.includes(u.id));
-        } else {
-          managersToNotify = users.filter(u => (u.role === 'Manager' && u.department === currentUser.department) || u.role === 'Admin');
-        }
-        managersToNotify.forEach(m => notifyServer(m.id, `New booking request from ${currentUser.fullName}`, 'info'));
+      setBookings(prev => [...prev, newBooking]);
+      
+      // Notify managers
+      let managersToNotify: User[] = [];
+      const config = approvalConfigs[currentUser.department];
+      if (config && config.managerIds.length > 0) {
+        managersToNotify = users.filter(u => config.managerIds.includes(u.id));
+      } else {
+        managersToNotify = users.filter(u => (u.role === 'Manager' && u.department === currentUser.department) || u.role === 'Admin');
       }
+      managersToNotify.forEach(m => notifyServer(m.id, `New booking request from ${currentUser.fullName}`, 'info'));
     } catch (e) {
       console.error('Booking failed', e);
     }
@@ -345,16 +368,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
+      await apiFetch(`${API_URL}/api/bookings/${bookingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus, approvals: newApprovals })
       });
-      if (res.ok) {
-        setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, approvals: newApprovals, status: newStatus } : b));
-        if (newStatus === 'Approved') {
-          notifyServer(booking.userId, `Your booking for ${booking.facility} on ${booking.date} has been approved!`, 'success');
-        }
+      setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, approvals: newApprovals, status: newStatus } : b));
+      if (newStatus === 'Approved') {
+        notifyServer(booking.userId, `Your booking for ${booking.facility} on ${booking.date} has been approved!`, 'success');
       }
     } catch (e) {
       console.error('Approval failed', e);
@@ -363,14 +384,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateApprovalConfig = async (department: string, config: ApprovalConfig) => {
     try {
-      const res = await fetch('/api/approval-configs', {
+      await apiFetch(`${API_URL}/api/approval-configs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ department, config })
       });
-      if (res.ok) {
-        setApprovalConfigs(prev => ({ ...prev, [department]: config }));
-      }
+      setApprovalConfigs(prev => ({ ...prev, [department]: config }));
     } catch (e) {
       console.error('Failed to update approval config', e);
     }
@@ -378,31 +397,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateBookingStatus = async (bookingId: string, status: BookingStatus, reason?: string) => {
     try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
+      await apiFetch(`${API_URL}/api/bookings/${bookingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, rejectionReason: reason })
       });
-      if (res.ok) {
-        setBookings(prev => prev.map(b => {
-          if (b.id === bookingId) {
-            notifyServer(b.userId, `Your booking for ${b.facility} on ${b.date} has been ${status.toLowerCase()}`, status === 'Approved' ? 'success' : 'warning');
-            return { ...b, status, rejectionReason: reason };
-          }
-          return b;
-        }));
+      setBookings(prev => prev.map(b => {
+        if (b.id === bookingId) {
+          notifyServer(b.userId, `Your booking for ${b.facility} on ${b.date} has been ${status.toLowerCase()}`, status === 'Approved' ? 'success' : 'warning');
+          return { ...b, status, rejectionReason: reason };
+        }
+        return b;
+      }));
 
-        if (status === 'Rejected' || status === 'Auto-cancelled') {
-          const booking = bookings.find(b => b.id === bookingId);
-          if (booking) {
-            const nextInLine = waitlist.find(w => 
-              w.facility === booking.facility && 
-              w.date === booking.date && 
-              w.timeSlot === booking.timeSlot
-            );
-            if (nextInLine) {
-              notifyServer(nextInLine.userId, `A spot has opened up for ${booking.facility} on ${booking.date}!`, 'success');
-            }
+      if (status === 'Rejected' || status === 'Auto-cancelled') {
+        const booking = bookings.find(b => b.id === bookingId);
+        if (booking) {
+          const nextInLine = waitlist.find(w => 
+            w.facility === booking.facility && 
+            w.date === booking.date && 
+            w.timeSlot === booking.timeSlot
+          );
+          if (nextInLine) {
+            notifyServer(nextInLine.userId, `A spot has opened up for ${booking.facility} on ${booking.date}!`, 'success');
           }
         }
       }
@@ -413,20 +430,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateUserStatus = async (userId: string, status: AccountStatus) => {
     try {
-      const res = await fetch(`/api/users/${userId}`, {
+      await apiFetch(`${API_URL}/api/users/${userId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
-      if (res.ok) {
-        setUsers(prev => prev.map(u => {
-          if (u.id === userId) {
-            notifyServer(u.id, `Your account status has been updated to ${status}`, status === 'Active' ? 'success' : 'warning');
-            return { ...u, status };
-          }
-          return u;
-        }));
-      }
+      setUsers(prev => prev.map(u => {
+        if (u.id === userId) {
+          notifyServer(u.id, `Your account status has been updated to ${status}`, status === 'Active' ? 'success' : 'warning');
+          return { ...u, status };
+        }
+        return u;
+      }));
     } catch (e) {
       console.error('Failed to update user status', e);
     }
@@ -434,15 +449,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateUserProfile = async (userId: string, data: Partial<User>) => {
     try {
-      const res = await fetch(`/api/users/${userId}`, {
+      await apiFetch(`${API_URL}/api/users/${userId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
-      if (res.ok) {
-        setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...data } : u));
-        if (currentUser?.id === userId) setCurrentUser(prev => prev ? { ...prev, ...data } : null);
-      }
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...data } : u));
+      if (currentUser?.id === userId) setCurrentUser(prev => prev ? { ...prev, ...data } : null);
     } catch (e) {
       console.error('Failed to update user profile', e);
     }
@@ -458,14 +471,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString()
     };
     try {
-      const res = await fetch('/api/waitlist', {
+      await apiFetch(`${API_URL}/api/waitlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEntry)
       });
-      if (res.ok) {
-        setWaitlist(prev => [...prev, newEntry]);
-      }
+      setWaitlist(prev => [...prev, newEntry]);
     } catch (e) {
       console.error('Failed to join waitlist', e);
     }
@@ -483,17 +494,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString()
     };
     try {
-      const res = await fetch('/api/issues', {
+      await apiFetch(`${API_URL}/api/issues`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...newIssue, reportedBy: currentUser.id })
       });
-      if (res.ok) {
-        setIssues(prev => [...prev, newIssue]);
-        users.filter(u => u.role === 'Admin' || u.role === 'Owner').forEach(a => 
-          notifyServer(a.id, `New issue reported in ${facility} by ${currentUser.fullName}`, 'warning')
-        );
-      }
+      setIssues(prev => [...prev, newIssue]);
+      users.filter(u => u.role === 'Admin' || u.role === 'Owner').forEach(a => 
+        notifyServer(a.id, `New issue reported in ${facility} by ${currentUser.fullName}`, 'warning')
+      );
     } catch (e) {
       console.error('Failed to report issue', e);
     }
@@ -501,14 +510,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const resolveIssue = async (issueId: string) => {
     try {
-      const res = await fetch(`/api/issues/${issueId}`, {
+      await apiFetch(`${API_URL}/api/issues/${issueId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'Resolved' })
       });
-      if (res.ok) {
-        setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: 'Resolved' } : i));
-      }
+      setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: 'Resolved' } : i));
     } catch (e) {
       console.error('Failed to resolve issue', e);
     }

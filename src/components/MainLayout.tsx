@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { Outlet, Navigate, Link, useLocation } from 'react-router-dom';
-import { LogOut, User as UserIcon, LayoutDashboard, BarChart2, Home as HomeIcon, CheckSquare, Settings, Shield, Bell, CheckCircle, AlertTriangle, Info } from 'lucide-react';
+import { LogOut, User as UserIcon, LayoutDashboard, BarChart2, Home as HomeIcon, CheckSquare, Settings, Shield, Bell, CheckCircle, AlertTriangle, Info, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 import ManagerSetupModal from './ManagerSetupModal';
 import { motion, AnimatePresence } from 'motion/react';
@@ -55,7 +55,10 @@ export default function MainLayout() {
           
           <nav className="hidden md:flex items-center gap-2">
             <NavLink to="/" icon={HomeIcon} label="Home" />
-            <NavLink to="/capacity" icon={BarChart2} label="Capacity" />
+            <NavLink to="/my-bookings" icon={Calendar} label="My Bookings" />
+            {(currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'Owner') && (
+               <NavLink to="/capacity" icon={BarChart2} label="Capacity" />
+            )}
             {(currentUser.role === 'Manager' || currentUser.role === 'Admin' || currentUser.role === 'Owner') && (
                <NavLink to="/approvals" icon={CheckSquare} label="Approvals" />
             )}
